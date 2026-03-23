@@ -1,0 +1,1523 @@
+openapi: 3.0.3
+info:
+  title: Reachy Mini Mobile API
+  description: Comprehensive REST API for mobile control of Reachy Mini robots via VPN
+  version: 1.0.0
+  contact:
+    name: Reachy Mini Mobile API
+    url: https://github.com/pollen-robotics/reachy-mini-mobile-api
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://api.reachy-mini.com/api/v1
+    description: Production server
+  - url: http://localhost:3001/api/v1
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    deviceHeaders:
+      type: apiKey
+      in: header
+      name: X-Device-ID
+
+  parameters:
+    DeviceID:
+      name: X-Device-ID
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Unique device identifier
+    AppVersion:
+      name: X-App-Version
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Mobile app version
+    Platform:
+      name: X-Platform
+      in: header
+      required: false
+      schema:
+        type: string
+        enum: [mobile-ios, mobile-android, pwa]
+      description: Mobile platform type
+
+  schemas:
+    # Authentication Schemas
+    LoginRequest:
+      type: object
+      required: [deviceId, deviceName, platform]
+      properties:
+        deviceId:
+          type: string
+          description: Unique device identifier
+        deviceName:
+          type: string
+          description: Human-readable device name
+        platform:
+          type: string
+          enum: [mobile-ios, mobile-android, pwa]
+        biometricEnabled:
+          type: boolean
+          default: false
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token (1h expiry)
+        refreshToken:
+          type: string
+          description: Refresh token (30d expiry)
+        expiresIn:
+          type: integer
+          description: Access token expiry in seconds
+        deviceId:
+          type: string
+          description: Device identifier
+
+    # Robot State Schemas
+    RobotStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [disconnected, ready_to_start, starting, sleeping, ready, busy, stopping, crashed]
+        busyReason:
+          type: string
+          enum: [moving, command, app-running, installing]
+          nullable: true
+        connectionMode:
+          type: string
+          enum: [usb, wifi, simulation, external]
+        isActive:
+          type: boolean
+        isCommandRunning:
+          type: boolean
+        isAppRunning:
+          type: boolean
+        safeToShutdown:
+          type: boolean
+        daemonVersion:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+
+    RobotState:
+      type: object
+      properties:
+        headPose:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+          description: 4x4 transformation matrix (row-major)
+        headJoints:
+          type: array
+          items:
+            type: number
+          description: 7 joint positions [yaw_body, stewart_1...stewart_6]
+        bodyYaw:
+          type: number
+          description: Body rotation in radians
+        antennasPosition:
+          type: array
+          items:
+            type: number
+          description: Antenna positions [left, right] in radians
+        passiveJoints:
+          type: array
+          items:
+            type: number
+          description: 21 passive joint positions (calculated via WASM)
+        controlMode:
+          type: string
+          enum: [enabled, disabled]
+        doa:
+          type: object
+          properties:
+            angle:
+              type: number
+              description: Direction of arrival angle in radians
+            speechDetected:
+              type: boolean
+        timestamp:
+          type: integer
+          format: int64
+
+    # Movement Schemas
+    MoveTargetRequest:
+      type: object
+      properties:
+        headPose:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+          description: 4x4 transformation matrix
+        bodyYaw:
+          type: number
+          description: Body rotation in radians
+        antennasPosition:
+          type: array
+          items:
+            type: number
+          description: Antenna positions [left, right]
+
+    ExpressionRequest:
+      type: object
+      required: [dataset, expression]
+      properties:
+        dataset:
+          type: string
+          description: Expression dataset (e.g., pollen-robotics/reachy-mini-emotions-library)
+        expression:
+          type: string
+          description: Expression name (e.g., joy1, fear2, anger3)
+
+    ActiveMove:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [expression, choreography, wake, sleep, custom]
+        startTime:
+          type: integer
+          format: int64
+        estimatedEndTime:
+          type: integer
+          format: int64
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    # Application Schemas
+    Application:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        author:
+          type: string
+        version:
+          type: string
+        category:
+          type: string
+        thumbnailUrl:
+          type: string
+        installStatus:
+          type: string
+          enum: [not_installed, installing, installed, updating, error]
+        isRunning:
+          type: boolean
+        lastUpdated:
+          type: integer
+          format: int64
+
+    InstallRequest:
+      type: object
+      required: [appId]
+      properties:
+        appId:
+          type: string
+          description: Application ID from Hugging Face
+        source:
+          type: string
+          description: Source repository (default: huggingface.co)
+        version:
+          type: string
+          description: Specific version (default: latest)
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [install, uninstall, update]
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        appId:
+          type: string
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        message:
+          type: string
+        startTime:
+          type: integer
+          format: int64
+        endTime:
+          type: integer
+          format: int64
+          nullable: true
+        logs:
+          type: array
+          items:
+            type: string
+
+    # System Schemas
+    SystemInfo:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+        daemonVersion:
+          type: string
+        robotHardware:
+          type: string
+          enum: [reachy-mini-lite, reachy-mini-wireless]
+        platform:
+          type: string
+        uptime:
+          type: integer
+          format: int64
+        memoryUsage:
+          type: object
+          properties:
+            total:
+              type: integer
+            used:
+              type: integer
+            available:
+              type: integer
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+        level:
+          type: string
+          enum: [debug, info, warning, error, critical]
+        source:
+          type: string
+          enum: [daemon, frontend, app, system]
+        message:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    DiagnosticData:
+      type: object
+      properties:
+        systemInfo:
+          $ref: '#/components/schemas/SystemInfo'
+        robotStatus:
+          $ref: '#/components/schemas/RobotStatus'
+        connectionInfo:
+          type: object
+          properties:
+            mode:
+              type: string
+            host:
+              type: string
+            latency:
+              type: number
+            quality:
+              type: string
+              enum: [excellent, good, fair, poor]
+        installedApps:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+        recentLogs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogEntry'
+        performanceMetrics:
+          type: object
+          additionalProperties: true
+
+    # Audio/Video Schemas
+    VolumeSettings:
+      type: object
+      properties:
+        speaker:
+          type: object
+          properties:
+            volume:
+              type: number
+              minimum: 0
+              maximum: 100
+            muted:
+              type: boolean
+            device:
+              type: string
+        microphone:
+          type: object
+          properties:
+            volume:
+              type: number
+              minimum: 0
+              maximum: 100
+            muted:
+              type: boolean
+            device:
+              type: string
+            doa:
+              type: object
+              properties:
+                angle:
+                  type: number
+                speechDetected:
+                  type: boolean
+
+    WebRTCOffer:
+      type: object
+      properties:
+        sdp:
+          type: string
+        type:
+          type: string
+          enum: [offer]
+        iceServers:
+          type: array
+          items:
+            type: object
+            properties:
+              urls:
+                type: array
+                items:
+                  type: string
+
+    # Network Schemas
+    WiFiStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        ssid:
+          type: string
+          nullable: true
+        signalStrength:
+          type: integer
+          minimum: -100
+          maximum: 0
+        ipAddress:
+          type: string
+          nullable: true
+        mode:
+          type: string
+          enum: [client, hotspot]
+
+    WiFiNetwork:
+      type: object
+      properties:
+        ssid:
+          type: string
+        signalStrength:
+          type: integer
+        security:
+          type: string
+          enum: [open, wep, wpa, wpa2, wpa3]
+        frequency:
+          type: number
+
+    WiFiConnectRequest:
+      type: object
+      required: [ssid]
+      properties:
+        ssid:
+          type: string
+        password:
+          type: string
+        security:
+          type: string
+          enum: [open, wep, wpa, wpa2, wpa3]
+
+    # Settings Schemas
+    Settings:
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [light, dark, auto]
+        telemetryEnabled:
+          type: boolean
+        streamingQuality:
+          type: string
+          enum: [auto, high, medium, low]
+        adaptiveStreaming:
+          type: boolean
+        backgroundUpdates:
+          type: boolean
+        notifications:
+          type: object
+          properties:
+            robotStatus:
+              type: boolean
+            appUpdates:
+              type: boolean
+            systemAlerts:
+              type: boolean
+
+    # Batch Request Schema
+    BatchRequest:
+      type: object
+      properties:
+        requests:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              method:
+                type: string
+                enum: [GET, POST, PUT, PATCH, DELETE]
+              url:
+                type: string
+              headers:
+                type: object
+                additionalProperties:
+                  type: string
+              body:
+                type: object
+
+    BatchResponse:
+      type: object
+      properties:
+        responses:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              status:
+                type: integer
+              headers:
+                type: object
+                additionalProperties:
+                  type: string
+              body:
+                type: object
+
+    # Error Schemas
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: integer
+          format: int64
+        correlationId:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Authentication Endpoints
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Authenticate device and get tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout and invalidate tokens
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Logged out successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/status:
+    get:
+      tags: [Authentication]
+      summary: Check authentication status
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Authentication status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                  deviceId:
+                    type: string
+                  expiresAt:
+                    type: integer
+                    format: int64
+
+  # Robot Control Endpoints
+  /robot/status:
+    get:
+      tags: [Robot Control]
+      summary: Get current robot status
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Robot status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RobotStatus'
+
+  /robot/connection:
+    get:
+      tags: [Robot Control]
+      summary: Get connection information
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Connection information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum: [usb, wifi, simulation, external]
+                  host:
+                    type: string
+                  port:
+                    type: integer
+                  latency:
+                    type: number
+                  quality:
+                    type: string
+                    enum: [excellent, good, fair, poor]
+
+  /robot/connect:
+    post:
+      tags: [Robot Control]
+      summary: Initiate robot connection
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [usb, wifi, simulation]
+                host:
+                  type: string
+                  description: Required for WiFi mode
+      responses:
+        '200':
+          description: Connection initiated successfully
+        '400':
+          description: Invalid connection parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /robot/disconnect:
+    post:
+      tags: [Robot Control]
+      summary: Disconnect from robot
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Disconnected successfully
+
+  /robot/state/current:
+    get:
+      tags: [Robot Control]
+      summary: Get current robot state snapshot
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Current robot state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RobotState'
+
+  /robot/move/target:
+    post:
+      tags: [Robot Control]
+      summary: Set movement target (continuous control)
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveTargetRequest'
+      responses:
+        '200':
+          description: Movement target set successfully
+        '423':
+          description: Robot is busy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /robot/move/expression:
+    post:
+      tags: [Robot Control]
+      summary: Play expression or emotion
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpressionRequest'
+      responses:
+        '200':
+          description: Expression started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveMove'
+
+  /robot/move/choreography:
+    post:
+      tags: [Robot Control]
+      summary: Execute choreography or dance
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dataset:
+                  type: string
+                choreography:
+                  type: string
+      responses:
+        '200':
+          description: Choreography started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveMove'
+
+  /robot/move/wake:
+    post:
+      tags: [Robot Control]
+      summary: Execute wake up sequence
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Wake sequence started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveMove'
+
+  /robot/move/sleep:
+    post:
+      tags: [Robot Control]
+      summary: Execute sleep sequence
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Sleep sequence started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveMove'
+
+  /robot/move/stop:
+    post:
+      tags: [Robot Control]
+      summary: Stop all robot movement
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Movement stopped successfully
+
+  /robot/move/active:
+    get:
+      tags: [Robot Control]
+      summary: Get list of active moves
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: List of active moves
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActiveMove'
+
+  # Application Management Endpoints
+  /apps/available:
+    get:
+      tags: [Applications]
+      summary: Get available applications from store
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: official
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of available applications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Application'
+                  total:
+                    type: integer
+                  hasMore:
+                    type: boolean
+
+  /apps/installed:
+    get:
+      tags: [Applications]
+      summary: Get installed applications
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: List of installed applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Application'
+
+  /apps/current:
+    get:
+      tags: [Applications]
+      summary: Get currently running application
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Currently running application
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Application'
+                  - type: object
+                    properties:
+                      status:
+                        type: object
+                        properties:
+                          state:
+                            type: string
+                            enum: [starting, running, stopping, stopped, error]
+                          message:
+                            type: string
+                          startTime:
+                            type: integer
+                            format: int64
+        '404':
+          description: No application currently running
+
+  /apps/install:
+    post:
+      tags: [Applications]
+      summary: Install application (async operation)
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallRequest'
+      responses:
+        '202':
+          description: Installation job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+
+  /apps/{appId}:
+    delete:
+      tags: [Applications]
+      summary: Uninstall application
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Uninstall job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+
+  /apps/{appId}/start:
+    post:
+      tags: [Applications]
+      summary: Start application
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Application started successfully
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /apps/{appId}/stop:
+    post:
+      tags: [Applications]
+      summary: Stop application
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Application stopped successfully
+
+  /apps/jobs:
+    get:
+      tags: [Applications]
+      summary: Get installation job status
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+        - name: jobId
+          in: query
+          schema:
+            type: string
+          description: Specific job ID to query
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+
+  # System Management Endpoints
+  /system/info:
+    get:
+      tags: [System]
+      summary: Get system information
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: System information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfo'
+
+  /system/logs:
+    get:
+      tags: [System]
+      summary: Get system logs (paginated)
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [daemon, frontend, app, system]
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [debug, info, warning, error, critical]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: since
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp
+      responses:
+        '200':
+          description: System logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LogEntry'
+                  total:
+                    type: integer
+                  hasMore:
+                    type: boolean
+
+  /system/logs/clear:
+    post:
+      tags: [System]
+      summary: Clear system logs
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source:
+                  type: string
+                  enum: [daemon, frontend, app, system, all]
+                olderThan:
+                  type: integer
+                  format: int64
+                  description: Unix timestamp
+      responses:
+        '200':
+          description: Logs cleared successfully
+
+  /system/diagnostics:
+    get:
+      tags: [System]
+      summary: Get diagnostic information
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Diagnostic data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticData'
+
+  /system/diagnostics/export:
+    post:
+      tags: [System]
+      summary: Export diagnostic bundle
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Diagnostic bundle
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+
+  /system/updates/check:
+    get:
+      tags: [System]
+      summary: Check for system updates
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Update information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updateAvailable:
+                    type: boolean
+                  currentVersion:
+                    type: string
+                  latestVersion:
+                    type: string
+                  releaseNotes:
+                    type: string
+                  downloadSize:
+                    type: integer
+
+  /system/updates/install:
+    post:
+      tags: [System]
+      summary: Install system updates
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '202':
+          description: Update installation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+
+  # Audio/Video Endpoints
+  /audio/volume:
+    get:
+      tags: [Audio/Video]
+      summary: Get volume settings
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Volume settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeSettings'
+
+    post:
+      tags: [Audio/Video]
+      summary: Set volume settings
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                speaker:
+                  type: object
+                  properties:
+                    volume:
+                      type: number
+                      minimum: 0
+                      maximum: 100
+                    muted:
+                      type: boolean
+                microphone:
+                  type: object
+                  properties:
+                    volume:
+                      type: number
+                      minimum: 0
+                      maximum: 100
+                    muted:
+                      type: boolean
+      responses:
+        '200':
+          description: Volume settings updated
+
+  /audio/microphone:
+    get:
+      tags: [Audio/Video]
+      summary: Get microphone settings and DoA
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Microphone settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  volume:
+                    type: number
+                  muted:
+                    type: boolean
+                  device:
+                    type: string
+                  doa:
+                    type: object
+                    properties:
+                      angle:
+                        type: number
+                      speechDetected:
+                        type: boolean
+                      confidence:
+                        type: number
+
+  /media/webrtc/offer:
+    get:
+      tags: [Audio/Video]
+      summary: Get WebRTC offer for camera streaming
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: WebRTC offer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebRTCOffer'
+
+  /media/webrtc/answer:
+    post:
+      tags: [Audio/Video]
+      summary: Send WebRTC answer
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sdp:
+                  type: string
+                type:
+                  type: string
+                  enum: [answer]
+      responses:
+        '200':
+          description: WebRTC answer processed
+
+  # Network & WiFi Endpoints
+  /network/wifi/status:
+    get:
+      tags: [Network]
+      summary: Get WiFi connection status
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: WiFi status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WiFiStatus'
+
+  /network/wifi/scan:
+    get:
+      tags: [Network]
+      summary: Scan for available WiFi networks
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Available WiFi networks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WiFiNetwork'
+
+  /network/wifi/connect:
+    post:
+      tags: [Network]
+      summary: Connect to WiFi network
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WiFiConnectRequest'
+      responses:
+        '200':
+          description: WiFi connection successful
+        '400':
+          description: Invalid WiFi credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /network/wifi/disconnect:
+    post:
+      tags: [Network]
+      summary: Disconnect from current WiFi network
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: WiFi disconnected successfully
+
+  # Settings Endpoints
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Get all application settings
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Application settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+
+    patch:
+      tags: [Settings]
+      summary: Update application settings
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Settings'
+      responses:
+        '200':
+          description: Settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+
+  # Batch Processing Endpoint
+  /batch:
+    post:
+      tags: [Batch]
+      summary: Execute multiple API requests in a single call
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchRequest'
+      responses:
+        '200':
+          description: Batch responses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+
+  # Health Check Endpoints
+  /health:
+    get:
+      tags: [Health]
+      summary: Basic API health check
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  timestamp:
+                    type: integer
+                    format: int64
+                  uptime:
+                    type: integer
+
+  /health/detailed:
+    get:
+      tags: [Health]
+      summary: Detailed health status of all components
+      responses:
+        '200':
+          description: Component health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [healthy, unhealthy]
+                          latency:
+                            type: number
+                      redis:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [healthy, unhealthy]
+                          latency:
+                            type: number
+                      robotDaemon:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [healthy, unhealthy]
+                          latency:
+                            type: number
+
+  /health/robot:
+    get:
+      tags: [Health]
+      summary: Check robot daemon connectivity
+      parameters:
+        - $ref: '#/components/parameters/DeviceID'
+      responses:
+        '200':
+          description: Robot daemon health
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  latency:
+                    type: number
+                  version:
+                    type: string
+                  lastSeen:
+                    type: integer
+                    format: int64
