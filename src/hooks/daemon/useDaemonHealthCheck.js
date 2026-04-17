@@ -107,6 +107,10 @@ export function useDaemonHealthCheck(isActive) {
           { silent: true }
         );
 
+        // Bail out if the effect was torn down while the request was in-flight;
+        // otherwise we'd write to the store after unmount / dependency change.
+        if (cleanupController.signal.aborted) return;
+
         if (response.ok) {
           // ✅ Parse response to check backend_status
           const data = await response.json();

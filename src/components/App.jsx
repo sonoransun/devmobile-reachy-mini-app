@@ -18,6 +18,7 @@ import {
   useUsbCheckTiming,
   useDeepLink,
   useWindowVisible,
+  useProxyErrorListener,
 } from '../hooks/system';
 import { useViewRouter, ViewRouterWrapper } from '../hooks/system/useViewRouter';
 import { useRobotCommands, useRobotStateWebSocket, useActiveMoves } from '../hooks/robot';
@@ -93,6 +94,9 @@ function App() {
 
   // 🍞 Global toast for deep link feedback
   const { toast, toastProgress, showToast, handleCloseToast } = useToast();
+
+  // Surface local-proxy bind failures (AddrInUse, etc.) via the global toast.
+  useProxyErrorListener();
 
   // 📊 Telemetry: Initialize, track app lifecycle, and install crash handlers
   useEffect(() => {

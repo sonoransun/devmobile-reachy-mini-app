@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{Mutex, RwLock};
@@ -66,7 +67,7 @@ impl Default for LocalProxyState {
 }
 
 /// Start the local proxy servers on all configured ports.
-async fn start_local_proxy(state: Arc<LocalProxyState>) {
+async fn start_local_proxy(state: Arc<LocalProxyState>, app_handle: tauri::AppHandle) {
     let mut handles = state.proxy_handles.lock().await;
 
     // Don't start if already running
@@ -78,8 +79,9 @@ async fn start_local_proxy(state: Arc<LocalProxyState>) {
     // Start TCP proxies
     for &port in TCP_PROXY_PORTS {
         let state_clone = state.clone();
+        let app_handle = app_handle.clone();
         let handle = tokio::spawn(async move {
-            start_tcp_proxy(state_clone, port).await;
+            start_tcp_proxy(state_clone, port, app_handle).await;
         });
         handles.push(handle);
     }
@@ -87,8 +89,9 @@ async fn start_local_proxy(state: Arc<LocalProxyState>) {
     // Start UDP proxies for WebRTC media
     for &port in UDP_PROXY_PORTS {
         let state_clone = state.clone();
+        let app_handle = app_handle.clone();
         let handle = tokio::spawn(async move {
-            start_udp_proxy(state_clone, port).await;
+            start_udp_proxy(state_clone, port, app_handle).await;
         });
         handles.push(handle);
     }
@@ -117,7 +120,7 @@ async fn stop_local_proxy(state: &Arc<LocalProxyState>) {
 }
 
 /// Start a TCP proxy server for a specific port
-async fn start_tcp_proxy(state: Arc<LocalProxyState>, port: u16) {
+async fn start_tcp_proxy(state: Arc<LocalProxyState>, port: u16, app_handle: tauri::AppHandle) {
     let bind_addr = format!("127.0.0.1:{}", port);
     let listener = match TcpListener::bind(&bind_addr).await {
         Ok(l) => {
@@ -130,6 +133,15 @@ async fn start_tcp_proxy(state: Arc<LocalProxyState>, port: u16) {
             } else {
                 log::error!("[proxy] Failed to bind TCP port {}: {}", port, e);
             }
+            let _ = app_handle.emit(
+                "proxy-bind-error",
+                serde_json::json!({
+                    "port": port,
+                    "protocol": "tcp",
+                    "error": e.to_string(),
+                    "kind": format!("{:?}", e.kind()),
+                }),
+            );
             return;
         }
     };
@@ -152,7 +164,7 @@ async fn start_tcp_proxy(state: Arc<LocalProxyState>, port: u16) {
 }
 
 /// Start a UDP proxy server for a specific port
-async fn start_udp_proxy(state: Arc<LocalProxyState>, port: u16) {
+async fn start_udp_proxy(state: Arc<LocalProxyState>, port: u16, app_handle: tauri::AppHandle) {
     let bind_addr = format!("127.0.0.1:{}", port);
     let local_socket = match UdpSocket::bind(&bind_addr).await {
         Ok(s) => {
@@ -165,6 +177,15 @@ async fn start_udp_proxy(state: Arc<LocalProxyState>, port: u16) {
             } else {
                 log::error!("[proxy] Failed to bind UDP port {}: {}", port, e);
             }
+            let _ = app_handle.emit(
+                "proxy-bind-error",
+                serde_json::json!({
+                    "port": port,
+                    "protocol": "udp",
+                    "error": e.to_string(),
+                    "kind": format!("{:?}", e.kind()),
+                }),
+            );
             return;
         }
     };
@@ -536,7 +557,11 @@ fn is_private_network_host(host: &str) -> bool {
 
 /// Set the target host for the proxy and start the proxy.
 /// Validates that the host is a private/local network address.
-pub async fn set_target_host(state: &Arc<LocalProxyState>, host: String) -> Result<(), String> {
+pub async fn set_target_host(
+    state: &Arc<LocalProxyState>,
+    host: String,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
     if host.is_empty() {
         return Err("Proxy target host cannot be empty".to_string());
     }
@@ -554,7 +579,7 @@ pub async fn set_target_host(state: &Arc<LocalProxyState>, host: String) -> Resu
         *target = Some(host);
     }
 
-    start_local_proxy(state.clone()).await;
+    start_local_proxy(state.clone(), app_handle.clone()).await;
     Ok(())
 }
 

@@ -221,10 +221,11 @@ fn check_crash_marker(app_handle: tauri::AppHandle) -> Option<serde_json::Value>
 
 #[tauri::command]
 async fn set_local_proxy_target(
+    app_handle: tauri::AppHandle,
     state: State<'_, Arc<LocalProxyState>>,
     host: String,
 ) -> Result<(), String> {
-    local_proxy::set_target_host(&state, host).await
+    local_proxy::set_target_host(&state, host, &app_handle).await
 }
 
 #[tauri::command]
@@ -268,22 +269,8 @@ pub fn run() {
         default_hook(info);
     }));
 
-    // Setup signal handler for brutal kill (SIGTERM, SIGINT, etc.) - Unix only
-    #[cfg(not(windows))]
-    {
-        std::thread::spawn(|| match Signals::new(TERM_SIGNALS) {
-            Ok(mut signals) => {
-                if let Some(sig) = signals.forever().next() {
-                    log::error!("Signal {:?} received - cleaning up daemon", sig);
-                    cleanup_system_daemons();
-                    std::process::exit(0);
-                }
-            }
-            Err(e) => {
-                log::warn!("Failed to register signal handlers: {} — daemon cleanup on SIGTERM will not work", e);
-            }
-        });
-    }
+    // Signal handler (SIGTERM/SIGINT) is installed inside `.setup()` below so it
+    // can route through Tauri's graceful-shutdown flow via `AppHandle::exit(0)`.
 
     // PostHog Analytics (EU Cloud) - Project ID: 115674
     // Override with POSTHOG_KEY env var for self-hosted instances
@@ -347,24 +334,60 @@ pub fn run() {
         })
         .manage(local_proxy_state)
         .manage(discovery_state)
-        .setup(
-            move |#[cfg(target_os = "macos")] app, #[cfg(not(target_os = "macos"))] _app| {
-                // 🔌 Start USB device monitor (Windows: event-driven, no polling, no terminal flicker)
-                if let Err(e) = usb::start_monitor() {
-                    log::warn!("Failed to start USB monitor: {}", e);
-                }
+        .setup(move |app| {
+            // 🔌 Start USB device monitor (Windows: event-driven, no polling, no terminal flicker)
+            if let Err(e) = usb::start_monitor() {
+                log::warn!("Failed to start USB monitor: {}", e);
+            }
 
-                #[cfg(target_os = "macos")]
-                {
-                    if let Some(win) = app.get_webview_window("main") {
-                        window::setup_transparent_titlebar(&win);
+            // Signal handler (SIGTERM/SIGINT, Unix only). Runs on Tauri's async runtime
+            // so the signal triggers `app_handle.exit(0)` — giving Tauri the chance to
+            // fire `RunEvent::ExitRequested` / `RunEvent::Exit`, which already call
+            // `cleanup_system_daemons()`. This replaces the previous detached
+            // `std::thread` that called `std::process::exit(0)` and bypassed shutdown.
+            #[cfg(not(windows))]
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let join_result = tauri::async_runtime::spawn_blocking(|| {
+                        Signals::new(TERM_SIGNALS).map(|mut s| s.forever().next())
+                    })
+                    .await;
+
+                    match join_result {
+                        Ok(Ok(Some(sig))) => {
+                            log::error!(
+                                "Signal {:?} received — requesting graceful exit",
+                                sig
+                            );
+                            app_handle.exit(0);
+                        }
+                        Ok(Err(e)) => log::warn!(
+                            "Failed to register signal handlers: {} — daemon cleanup on SIGTERM will not work",
+                            e
+                        ),
+                        Ok(Ok(None)) => {}
+                        Err(e) => log::warn!("Signal wait task failed: {}", e),
                     }
-                    permissions::request_all_permissions();
-                }
+                });
+            }
 
-                Ok(())
-            },
-        )
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(win) = app.get_webview_window("main") {
+                    window::setup_transparent_titlebar(&win);
+                }
+                permissions::request_all_permissions();
+            }
+
+            // `app` is unused on Windows after the Unix/macOS blocks above.
+            #[cfg(windows)]
+            {
+                let _ = app;
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             start_daemon,
             stop_daemon,

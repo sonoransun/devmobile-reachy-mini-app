@@ -129,20 +129,18 @@ pub fn add_log(state: &State<DaemonState>, message: String) {
 
     let timestamped_message = format!("{}|{}", timestamp, message);
 
-    match state.logs.lock() {
-        Ok(mut logs) => {
-            logs.push_back(timestamped_message);
-            if logs.len() > MAX_LOGS {
-                logs.pop_front();
-            }
+    // Recover from poison rather than dropping the log — if a thread panicked while
+    // holding this mutex the subsequent messages are exactly the ones we need to debug it.
+    let mut logs = match state.logs.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::warn!("[daemon] Logs mutex was poisoned — recovering");
+            poisoned.into_inner()
         }
-        Err(e) => {
-            log::error!(
-                "[daemon] Logs mutex poisoned, message dropped: {} — {}",
-                message,
-                e
-            );
-        }
+    };
+    logs.push_back(timestamped_message);
+    if logs.len() > MAX_LOGS {
+        logs.pop_front();
     }
 }
 

@@ -1,47 +1,7 @@
-# Logs
-logs
-*.log
-.claude-docs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-Reachy
-Test
-
-.playwright-mcp
-
-.claude/
-.cursor/
-.dist-web/
-
-.analysis-docs/
-.claude-4.5-sonnet-analysis/
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Lock files (using Yarn, ignore npm/pnpm lock files)
-package-lock.json
-pnpm-lock.yaml
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
+############################################
+# Secrets & signing keys — NEVER COMMIT
+############################################
 # Clés de signature Tauri - SECRETS CRITIQUES
-# ⚠️ NE JAMAIS COMMITER CES FICHIERS ⚠️
 *.key
 *.key.pub
 *.key.pem
@@ -57,41 +17,233 @@ keys/
 *.p12
 *.p8
 *.pem
+*.pfx
+*.mobileprovision
+*.jks
+*.keystore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+!.env.example
+!.env.*.example
+
+# Update signing / mock release fixtures
 test-updates/
 mock-updates/
 releases/
 
-# Rust build artifacts
-# Cargo build directories
+############################################
+# OS & editor cruft
+############################################
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.swp
+*.swo
+*.sw?
+*~
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.fleet/
+.zed/
+
+############################################
+# Agent / tooling caches
+############################################
+.claude/
+.cursor/
+.aider*
+.playwright-mcp/
+.claude-docs/
+.analysis-docs/
+.claude-4.5-sonnet-analysis/
+
+############################################
+# Logs
+############################################
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+############################################
+# Node / JS / Vite
+############################################
+node_modules/
+dist/
+dist-ssr/
+.dist-web/
+build/
+.cache/
+.parcel-cache/
+.vite/
+*.local
+
+# Lock files (using Yarn; ignore competing managers)
+package-lock.json
+pnpm-lock.yaml
+
+# Yarn berry caches (keep releases/plugins if used)
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Test / coverage output
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+.vitest-cache/
+e2e/screenshots/
+e2e/videos/
+e2e/.tmp/
+
+# Husky generated
+.husky/_/
+
+############################################
+# Rust / Cargo (workspace + subprojects)
+############################################
 target/
 **/target/
-
-# Rust incremental compilation
+**/*.rs.bk
 **/*.rs.bin
 **/*.rmeta
 **/*.rlib
 **/*.d
-
-# Rust debug symbols
 **/*.pdb
 **/*.dSYM/
-
-# Cargo registry cache
 .cargo/registry/
 .cargo/git/
 
-# Generated sidecar binaries and Python environment
-# These are built by build-sidecar scripts
+# WASM build outputs
+kinematics-wasm/pkg/
+**/pkg/
+
+############################################
+# Tauri / sidecar artifacts
+############################################
+src-tauri/gen/schemas/
 src-tauri/binaries/
 **/binaries/
-
-# Rust build artifacts in uv-wrapper
 uv-wrapper/target/
-uv-wrapper/target/**/*
 
-# Tutorial videos - too large, never commit
+############################################
+# Python (sidecar build + tools)
+############################################
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+.python-version
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+############################################
+# iOS / Xcode
+############################################
+# Build / user data
+**/build/
+**/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+**/*.xcworkspace/xcuserdata/
+**/*.xcodeproj/xcuserdata/
+**/*.xcodeproj/project.xcworkspace/xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# CocoaPods / Carthage
+Pods/
+Carthage/Build/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+############################################
+# Android / Gradle / Kotlin
+############################################
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.class
+*.hprof
+captures/
+.cxx/
+.externalNativeBuild/
+bin/
+gen/
+out/
+.navigation/
+
+# Android Studio / IntelliJ project churn
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries/
+.idea/libraries/
+.idea/caches/
+.idea/modules.xml
+.idea/navEditor.xml
+
+############################################
+# Project-specific large / generated assets
+############################################
+# Tutorial videos — too large, never commit
 src/assets/tutorial/
+# Blender source files
+src/assets/robot-3d/blender/
+# Generated release manifest
 docs/latest.json
 
-# Blender source files (too large for git)
-src/assets/robot-3d/blender/
+# mobile-api runtime logs (winston daily-rotate)
+mobile-api/logs/
+
+# Stray/local scratch dirs observed in repo
+Reachy
+Test
