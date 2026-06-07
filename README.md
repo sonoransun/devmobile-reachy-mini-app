@@ -17,6 +17,10 @@
 
 NOTE: HuggingFace / Reachy have a Mobile App which supports many of these features. It requires a HuggingFace account to link devices. This is complementary.
 
+<br />
+<img src="reachy-remote.jpg">
+<br />
+
 A comprehensive cross-platform ecosystem for controlling and monitoring your Reachy Mini robot. Featuring a modern desktop application, mobile apps for iOS and Android, and a unified API backend that enables seamless robot control across all platforms.
 
 > **📢 Platform Support**
